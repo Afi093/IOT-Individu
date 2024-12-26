@@ -1,0 +1,202 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include <ESP32Servo.h>
+
+// Servo settings
+Servo servoMotor1;
+int servoMin1 = 0;
+int servoMax1 = 180;
+Servo servoMotor2;
+int servoMin2 = 0;
+int servoMax2 = 180;
+
+// MPU6050 instance
+Adafruit_MPU6050 mpu;
+
+// Ultrasonic sensor settings
+const byte trig_pin = 12;
+const byte echo_pin = 14;
+float sound_speed = 0.034; // cm/us
+int BUZZER = 27;
+
+// LED settings
+byte led_pins[] = {13, 15, 2, 4, 5, 18, 19, 21, 22, 23};
+
+void setup(void) {
+  // Servo setup
+  Serial.begin(115200);
+  servoMotor1.attach(14);
+  servoMotor2.attach(12);
+
+  // MPU6050 setup
+    while (!Serial) {
+    delay(10);
+  }
+  Serial.println("Adafruit MPU6050 test!");
+
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
+
+  // Set the accelerometer and gyro ranges
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+    case MPU6050_RANGE_2_G: Serial.println("+-2G"); break;
+    case MPU6050_RANGE_4_G: Serial.println("+-4G"); break;
+    case MPU6050_RANGE_8_G: Serial.println("+-8G"); break;
+    case MPU6050_RANGE_16_G: Serial.println("+-16G"); break;
+  }
+
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+    case MPU6050_RANGE_250_DEG: Serial.println("+- 250 deg/s"); break;
+    case MPU6050_RANGE_500_DEG: Serial.println("+- 500 deg/s"); break;
+    case MPU6050_RANGE_1000_DEG: Serial.println("+- 1000 deg/s"); break;
+    case MPU6050_RANGE_2000_DEG: Serial.println("+- 2000 deg/s"); break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+    case MPU6050_BAND_260_HZ: Serial.println("260 Hz"); break;
+    case MPU6050_BAND_184_HZ: Serial.println("184 Hz"); break;
+    case MPU6050_BAND_94_HZ: Serial.println("94 Hz"); break;
+    case MPU6050_BAND_44_HZ: Serial.println("44 Hz"); break;
+    case MPU6050_BAND_21_HZ: Serial.println("21 Hz"); break;
+    case MPU6050_BAND_10_HZ: Serial.println("10 Hz"); break;
+    case MPU6050_BAND_5_HZ: Serial.println("5 Hz"); break;
+  }
+
+  Serial.println("");
+  delay(100);
+
+  // Ultrasonic sensor setup
+  pinMode(trig_pin, OUTPUT);
+  pinMode(echo_pin, INPUT);
+
+  // Buzzer setup
+  pinMode(BUZZER, OUTPUT);
+
+  // LED setup
+  for (int i = 0; i < sizeof(led_pins); i++) {
+    pinMode(led_pins[i], OUTPUT);
+  }
+
+  // Indicator testing
+  indicator_testing();
+}
+
+void loop() {
+  // Read MPU6050 data
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Control Servo 1 and Servo 2
+  Serial.print("Acceleration X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(", Y: ");
+  Serial.print(a.acceleration.y);
+  Serial.print(", Z: ");
+  Serial.print(a.acceleration.z);
+  Serial.println(" m/s^2");
+
+  Serial.print("Rotation X: ");
+  Serial.print(g.gyro.x);
+  int servoPos1 = map(g.gyro.x, -4.3, +4.3, servoMin1, servoMax1);
+  servoMotor1.write(servoPos1);
+  Serial.print(", Y: ");
+  Serial.print(g.gyro.y);
+  int servoPos2 = map(g.gyro.y, -4.3, +4.3, servoMin2, servoMax2);
+  servoMotor2.write(servoPos2);
+  Serial.print(", Z: ");
+  Serial.print(g.gyro.z);
+  Serial.println(" rad/s");
+
+  Serial.print("Temperature: ");
+  Serial.print(temp.temperature);
+  Serial.println(" degC");
+
+  Serial.println("");
+  delay(0);
+
+  // Ultrasonic sensor distance measurement
+  int distance = get_distance();
+  indicator(distance);
+  buzzer_alert(distance);
+
+  delay(20);
+}
+
+void indicator_testing() {
+  for (int i = 0; i < sizeof(led_pins); i++) {
+    digitalWrite(led_pins[i], HIGH);
+    delay(70);
+  }
+  for (int i = sizeof(led_pins) - 1; i >= 0; i--) {
+    digitalWrite(led_pins[i], LOW);
+    delay(70);
+  }
+}
+
+int get_distance() {
+  digitalWrite(trig_pin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trig_pin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig_pin, LOW);
+
+  long int duration = pulseIn(echo_pin, HIGH);
+  return (duration * sound_speed) / 2;
+}
+
+void indicator(int distance) {
+  if (distance <= 150 && distance > 135) led_on(1);
+  else if (distance <= 135 && distance > 120) led_on(2);
+  else if (distance <= 120 && distance > 105) led_on(3);
+  else if (distance <= 105 && distance > 90) led_on(4);
+  else if (distance <= 90 && distance > 75) led_on(5);
+  else if (distance <= 75 && distance > 60) led_on(6);
+  else if (distance <= 60 && distance > 45) led_on(7);
+  else if (distance <= 45 && distance > 30) led_on(8);
+  else if (distance <= 30 && distance > 15) led_on(9);
+  else if (distance <= 15 && distance > 0) led_on(10);
+  else led_on(0);
+}
+
+void led_on(byte led_count) {
+  for (int i = 0; i < led_count; i++) {
+    digitalWrite(led_pins[i], HIGH);
+  }
+  for (int i = led_count; i < sizeof(led_pins); i++) {
+    digitalWrite(led_pins[i], LOW);
+  }
+}
+
+void buzzer_alert(int distance) {
+  if (distance <= 45 && distance > 30) {
+    tone(BUZZER, 1000);
+    delay(200);
+    noTone(BUZZER);
+    delay(200);
+  } else if (distance <= 30 && distance > 15) {
+    tone(BUZZER, 2000);
+    delay(100);
+    noTone(BUZZER);
+    delay(100);
+  } else if (distance <= 15 && distance > 0) {
+    tone(BUZZER, 3000);
+    delay(50);
+    noTone(BUZZER);
+    delay(50);
+  } else {
+    noTone(BUZZER);
+  }
+}
